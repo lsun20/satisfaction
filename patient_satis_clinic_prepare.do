@@ -15,8 +15,8 @@ set	maxvar	20000
 *   Author(s):      Sophie Sun 
 *	Created: 		20170624
 -----------------------------------------------------------*/
-global 	dtadir		"/Users/lsun20/Dropbox (MIT)/2017Summer/satisfaction"
-global	resultsdir	"${dtadir}/table and figures"
+global 	dtadir		"/Users/lsun20/Dropbox (MIT)/2017Summer/satisfaction/data/"
+global	resultsdir	"/Users/lsun20/Dropbox (MIT)/2017Summer/satisfaction/output/"
 
 /*
 unicode encoding set gb18030

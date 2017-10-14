@@ -16,7 +16,7 @@ set	maxvar	20000
 *	Created: 		20171009
 -----------------------------------------------------------*/
 global 	dtadir		"/Users/lsun20/Dropbox (MIT)/2017Summer/satisfaction/data"
-global	resultsdir	"/Users/lsun20/Dropbox (MIT)/2017Summer/satisfaction/Output"
+global	resultsdir	"/Users/lsun20/Dropbox (MIT)/2017Summer/satisfaction/output"
 
 *********************Table 1 Descriptive table of clinic characteristics
 
@@ -118,22 +118,9 @@ local row = 2 //initiate row number to store output for putexcel
 tab hh47 hh48
 
 
-*********************Table 4 Effect of relative satisfaction score on demand for THC
+*********************Table 4 Effect of ratings for health care component on demand 
 
 use "${dtadir}/hh_vc_thc_char.dta", clear
-
-// summarize relative satisfaction score
-/*
-foreach var of varlist rel_*_score_thc {
-	sum `var', det
-	local n = `r(N)'
-	local mean = `r(mean)'
-	local p5 = `r(p5)'
-
-}
-*/
-sum rel_*_score_thc
-sum rel_*_score_county
 
 // Estimate multinomial logit model
 gen equip_score1 	= hh35
@@ -168,37 +155,56 @@ gen pres_score1		= hh42
 gen pres_score2		= hh103
 gen pres_score3		= hh151
 
-drop rel_*_score*
 keep *_score* hh47 hh48 hhage hhgender hhincome hhcode hhlesselementary hhelementary hhmiddle hhhighormore ///
 			hhincome hhpeople hhchild hhelder
 reshape long equip_score diag_score treat_score fee_score wait_score time_score comm_score pres_score, i(hhcode) j(tier)
+
 label define tier_lbl 1 "vc" 2 "thc" 3 "county_hospital"
 label value tier tier_lbl
 gen choice = hh48 == tier
 replace choice = hh47 == tier // stated preference - which one would you visit
 
-foreach vv of varlist  *_score {
-	replace `vv' = 0 if `vv' < 4 // following Sean to convert Likert score
-	replace `vv' = 1 if `vv' <= 5 & `vv' >= 4 
-	replace `vv'=. if `vv'>5
-
-}
 replace hhincome = log(hhincome)
+
+gen hhadult = hhpeople - hhchild - hhelder
 
 // try mlogit first, only controlling for HH characteristics
 preserve
 //outreg, clear
 keep if choice == 1
 mlogit tier hhage hhgender hhlesselementary hhelementary hhmiddle  ///
-			hhincome hhpeople hhchild hhelder
+			hhincome hhadult hhchild hhelder
 margins, dydx(*) post
-//outreg2 using mlogitmfx.doc, word replace ctitle(mlogit) addnote(NOTE: excluded category for education is high school)
+//outreg2 using ${resultsdir}/mlogitmfx.doc, word replace ctitle(mlogit) addnote(NOTE: excluded category for education is high school)
 restore
 
+// summarize ratings
+
+foreach vv of varlist  *_score {
+	replace `vv'=. if `vv'>5 // take out scores that are missing (value == 99)
+
+}
+
+
+/*
+// convert the likert score to dummy variables
+foreach vv of varlist  *_score {
+	replace `vv' = 0 if `vv' < 5 
+	replace `vv' = 1 if `vv' == 5 
+
+}
+*/
+
+// convert the likert score to rankings among health system tiers
+foreach vv of varlist  *_score {
+	sort hhcode `vv'  // sort the score low to high
+	bys hhcode : gen `vv'_rank = _n
+	bys hhcode: replace `vv'_rank = `vv'_rank[_n-1] if `vv' == `vv'[_n-1] & _n != 1 // for equal ratings, make them ties
+}
 
 // try conditional logit, which adds raitings for different component of care
-// log using "${results}/asclogit.log", replace
-asclogit choice *_score, case(hhcode) alternatives(tier) casevars(hhage hhgender hhincome hhpeople) nocons
+// ind. var. is *_score for using score, if use rank, then change to *_rank
+asclogit choice *_rank, case(hhcode) alternatives(tier) casevars(hhage hhgender hhincome hhadult) nocons
 
 estat mfx
 
@@ -226,9 +232,11 @@ forvalues i = 1/`k' {
 	Fill_rbV `b`i'' `V`i''
 	outreg, margin merge ctitle("", "", "`e(alt`i')'") nodisplay
 }
-outreg using ascmfx, replay replace
 
-// log close
-lclogit choice *_score, id(hhcode) gid(hhcode) membership(hhage hhgender hhincome) nclasses(2)
+outreg using "${resultsdir}/ascmfx_rating_order", replay replace
+//outreg using "${resultsdir}/ascmfx_rating_cardinal", replay replace
+//outreg using "${resultsdir}/ascmfx_rating_eq_5", replay replace
+//outreg using "${resultsdir}/ascmfx_rating_ge_4", replay replace
+
 
 
